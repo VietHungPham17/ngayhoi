@@ -1,7 +1,8 @@
+import os
+import sqlite3
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import sqlite3
 
 app = FastAPI()
 
@@ -14,11 +15,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DB_FILE = "ngayhoi.db"
+DB_PATH = os.getenv("DB_PATH", "ngayhoi.db")
+db = sqlite3.connect(DB_PATH, check_same_thread=False)
 
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
+    cursor = db.cursor()
     # Tạo bảng với ràng buộc UNIQUE trên ma_sv
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS dang_ky (
@@ -27,8 +28,7 @@ def init_db():
             ma_phien TEXT NOT NULL
         )
     ''')
-    conn.commit()
-    conn.close()
+    db.commit()
 
 # Khởi tạo database khi chạy app
 init_db()
@@ -40,11 +40,9 @@ class DangKy(BaseModel):
 @app.post("/api/dang-ky", status_code=status.HTTP_201_CREATED)
 def dang_ky(data: DangKy):
     try:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
+        cursor = db.cursor()
         cursor.execute("INSERT INTO dang_ky (ma_sv, ma_phien) VALUES (?, ?)", (data.ma_sv, data.ma_phien))
-        conn.commit()
-        conn.close()
+        db.commit()
         return {"ok": True}
     except sqlite3.IntegrityError:
         # Nếu ma_sv đã tồn tại thì sqlite3 sẽ quăng lỗi IntegrityError (do UNIQUE constraint)
