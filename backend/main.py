@@ -16,16 +16,19 @@ app.add_middleware(
 )
 
 DB_PATH = os.getenv("DB_PATH", "ngayhoi.db")
-db = sqlite3.connect(DB_PATH, check_same_thread=False)
+db = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=30.0)
 
 def init_db():
+    if DB_PATH != ":memory:":
+        db.execute("PRAGMA journal_mode=WAL")
     cursor = db.cursor()
-    # Tạo bảng với ràng buộc UNIQUE trên ma_sv
+    # Tạo bảng với ràng buộc UNIQUE trên (ma_sv, ma_phien)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS dang_ky (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ma_sv TEXT NOT NULL UNIQUE,
-            ma_phien TEXT NOT NULL
+            ma_sv TEXT NOT NULL,
+            ma_phien TEXT NOT NULL,
+            UNIQUE(ma_sv, ma_phien)
         )
     ''')
     db.commit()
@@ -37,13 +40,35 @@ class DangKy(BaseModel):
     ma_sv: str
     ma_phien: str
 
+def get_connection():
+    if DB_PATH == ":memory:":
+        return db
+    conn = sqlite3.connect(DB_PATH, timeout=30.0)
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
+
 @app.post("/api/dang-ky", status_code=status.HTTP_201_CREATED)
 def dang_ky(data: DangKy):
+    conn = get_connection()
     try:
-        cursor = db.cursor()
-        cursor.execute("INSERT INTO dang_ky (ma_sv, ma_phien) VALUES (?, ?)", (data.ma_sv, data.ma_phien))
-        db.commit()
+        cursor = conn.cursor()
+        # 1. Kiểm tra đã đăng ký phiên này chưa
+        cursor.execute("SELECT 1 FROM dang_ky WHERE ma_sv = ? AND ma_phien = ?", (data.ma_sv, data.ma_phien))
+        if cursor.fetchone():
+            raise HTTPException(status_code=409, detail="DA_DANG_KY")
+
+        # 2. Gộp đếm và ghi vào duy nhất một câu lệnh SQL
+        cursor.execute("""
+            INSERT INTO dang_ky (ma_sv, ma_phien)
+            SELECT ?, ?
+            WHERE (SELECT COUNT(*) FROM dang_ky WHERE ma_phien = ?) < 30
+        """, (data.ma_sv, data.ma_phien, data.ma_phien))
+        conn.commit()
+
+        if cursor.rowcount == 0:
+            raise HTTPException(status_code=409, detail="HET_CHO")
+
         return {"ok": True}
-    except sqlite3.IntegrityError:
-        # Nếu ma_sv đã tồn tại thì sqlite3 sẽ quăng lỗi IntegrityError (do UNIQUE constraint)
-        raise HTTPException(status_code=409, detail="DA_DANG_KY")
+    finally:
+        if DB_PATH != ":memory:":
+            conn.close()
