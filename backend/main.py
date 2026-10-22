@@ -47,7 +47,7 @@ def get_connection():
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
-SUC_CHUA = 30
+SUC_CHUA = 31
 
 @app.post("/api/dang-ky", status_code=status.HTTP_201_CREATED)
 def dang_ky(data: DangKy):
