@@ -47,6 +47,8 @@ def get_connection():
     conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
+SUC_CHUA = 30
+
 @app.post("/api/dang-ky", status_code=status.HTTP_201_CREATED)
 def dang_ky(data: DangKy):
     conn = get_connection()
@@ -61,8 +63,8 @@ def dang_ky(data: DangKy):
         cursor.execute("""
             INSERT INTO dang_ky (ma_sv, ma_phien)
             SELECT ?, ?
-            WHERE (SELECT COUNT(*) FROM dang_ky WHERE ma_phien = ?) < 30
-        """, (data.ma_sv, data.ma_phien, data.ma_phien))
+            WHERE (SELECT COUNT(*) FROM dang_ky WHERE ma_phien = ?) < ?
+        """, (data.ma_sv, data.ma_phien, data.ma_phien, SUC_CHUA))
         conn.commit()
 
         if cursor.rowcount == 0:
