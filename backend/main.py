@@ -74,3 +74,11 @@ def dang_ky(data: DangKy):
     finally:
         if DB_PATH != ":memory:":
             conn.close()
+
+@app.get("/api/con-cho")
+def con_cho(ma_phien: str):
+    cur = db.execute(
+        "SELECT COUNT(*) FROM dang_ky WHERE ma_phien=?", (ma_phien,)
+    )
+    n = cur.fetchone()[0]
+    return {"con_cho": SUC_CHUA - n}
